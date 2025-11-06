@@ -1,0 +1,105 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Admin – Roles & Skills</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <header class="bg-gray-800 text-white py-4">
+    <div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
+      <h1 class="text-xl font-semibold">Admin – Roles & Skills</h1>
+      <a href="/" class="text-sm bg-blue-600 px-3 py-2 rounded">← Back to App</a>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-8">
+    <!-- Add Role -->
+    <section class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-lg font-semibold mb-3">Add Role</h2>
+      <form action="/admin/roles/add" method="POST" class="flex gap-3">
+        <input name="role_name" class="border p-2 rounded flex-1" placeholder="e.g., Full Stack Developer" required>
+        <button class="bg-green-600 text-white px-4 py-2 rounded">Add Role</button>
+      </form>
+    </section>
+
+    <!-- Add Skill -->
+    <section class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-lg font-semibold mb-3">Add Skill to Role</h2>
+      <form action="/admin/skills/add" method="POST" class="grid md:grid-cols-4 gap-3">
+        <div class="md:col-span-2">
+          <label class="block text-sm mb-1">Role</label>
+          <select name="role_name" class="border p-2 rounded w-full" required>
+            <option value="">-- Select Role --</option>
+            {% for r in roles %}
+              <option value="{{ r }}">{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Type</label>
+          <select name="type" class="border p-2 rounded w-full" required>
+            <option value="core">core</option>
+            <option value="tools">tools</option>
+            <option value="soft">soft</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Skill Name</label>
+          <input name="skill_name" class="border p-2 rounded w-full" placeholder="e.g., react, docker, communication" required>
+        </div>
+        <div class="md:col-span-4 flex justify-end">
+          <button class="bg-blue-600 text-white px-4 py-2 rounded">Add Skill</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Skills per Role -->
+    <section class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-lg font-semibold mb-4">Roles & Skills</h2>
+
+      {% if role_map %}
+        <div class="space-y-6">
+          {% for role, buckets in role_map.items() %}
+            <div class="border rounded-lg">
+              <div class="px-4 py-3 bg-gray-50 font-semibold">{{ role }}</div>
+              <div class="p-4 grid md:grid-cols-3 gap-4">
+                {% for typ in ["core","tools","soft"] %}
+                  <div>
+                    <h3 class="font-medium mb-2">{{ typ|capitalize }}</h3>
+                    {% if buckets[typ] %}
+                      <ul class="space-y-2">
+                        {% for s in buckets[typ] %}
+                          <li class="flex items-center justify-between bg-gray-100 px-2 py-1 rounded">
+                            <span class="text-sm">{{ s }}</span>
+                            <form method="POST" action="/admin/skills/remove" class="ml-2">
+                              <input type="hidden" name="role_name" value="{{ role }}">
+                              <input type="hidden" name="type" value="{{ typ }}">
+                              <input type="hidden" name="skill_name" value="{{ s }}">
+                              <button class="text-xs bg-red-600 text-white px-2 py-1 rounded">Remove</button>
+                            </form>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <p class="text-sm text-gray-500">None</p>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-gray-600">No roles yet. Add one above.</p>
+      {% endif %}
+    </section>
+  </main>
+
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © 2025 Resume Analyzer AI
+  </footer>
+</body>
+</html>

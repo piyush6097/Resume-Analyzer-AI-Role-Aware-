@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Resume Analyzer AI - Role Aware</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+<header class="bg-blue-600 text-white py-4 px-6 flex justify-between items-center">
+  <div class="text-2xl font-semibold">Resume Analyzer AI – Role Aware</div>
+  <a href="/admin/skills" class="bg-gray-900 text-white px-3 py-2 rounded text-sm hover:bg-gray-700">
+    Admin: Roles & Skills
+  </a>
+</header>
+
+
+<main class="flex-grow flex items-center justify-center py-8">
+  <div class="bg-white p-6 rounded-xl shadow w-full max-w-5xl">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold">Bulk Resume Analysis</h2>
+      <a href="/admin/skills" class="text-sm bg-gray-800 text-white px-3 py-2 rounded">Admin: Roles & Skills</a>
+    </div>
+
+    {% if error %}
+      <div class="text-red-700 bg-red-100 p-3 rounded mb-4">{{ error }}</div>
+    {% endif %}
+
+    <form id="analyzeForm" action="/" method="POST" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="block mb-1">Select Role</label>
+        <select name="role" required class="w-full border p-2 rounded">
+          <option value="">-- Select Role --</option>
+          {% for r in roles %}
+            <option value="{{ r }}">{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block mb-1">Upload Resumes (multiple allowed)</label>
+        <input type="file" name="resumes" accept=".pdf" multiple required class="w-full border p-2 rounded" />
+      </div>
+
+      <div>
+        <label class="block mb-1">Paste Job Description (required)</label>
+        <textarea id="jd_textarea" name="job_description" rows="4" class="w-full border p-2 rounded" placeholder="Paste the full Job Description here (required)"></textarea>
+        <p class="text-sm text-gray-500 mt-1">Or select a saved JD from the dropdown below. JD is mandatory for every analysis run.</p>
+      </div>
+
+      <div>
+        <label class="block mb-1">Or select saved JD</label>
+        <select id="jd_select" name="jd_id" class="w-full border p-2 rounded">
+          <option value="">-- Select saved JD --</option>
+          {% for jd in jds %}
+            <option value="{{ jd[0] }}">{{ jd[1] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="analyzeBtn" type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Analyze</button>
+        <button type="button" id="exportXlsxBtn" class="bg-purple-600 text-white px-4 py-2 rounded">Export Results (XLSX)</button>
+        <button type="button" id="openAddJd" class="ml-auto bg-gray-700 text-white px-3 py-2 rounded">+ Add New JD</button>
+      </div>
+    </form>
+
+    <!-- Add JD Modal -->
+    <div id="addJdModal" class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-40">
+      <div class="bg-white p-6 rounded-lg w-11/12 max-w-xl">
+        <h3 class="text-lg font-semibold mb-3">Add New Job Description</h3>
+        <form id="addJdForm" action="/admin/jd/add" method="POST" class="space-y-3">
+          <div>
+            <label class="block mb-1 font-medium">JD Name</label>
+            <input type="text" name="name" required class="w-full border p-2 rounded" placeholder="e.g., Full Stack Developer - L1">
+          </div>
+          <div>
+            <label class="block mb-1 font-medium">JD Description</label>
+            <textarea name="description" rows="6" required class="w-full border p-2 rounded"></textarea>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button type="button" id="closeAddJd" class="px-3 py-2 rounded border">Cancel</button>
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Save JD</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Results -->
+    {% if results %}
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold mb-3">Results</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full table-auto border">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="p-2 border">File</th>
+                <th class="p-2 border">Overall</th>
+                <th class="p-2 border">Tech</th>
+                <th class="p-2 border">Exp</th>
+                <th class="p-2 border">Tools</th>
+                <th class="p-2 border">Soft</th>
+                <th class="p-2 border">Status</th>
+                <th class="p-2 border">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in results %}
+              <tr class="border-t">
+                <td class="p-2 border">{{ r.filename }}</td>
+                <td class="p-2 border font-semibold">{{ r.overall }}%</td>
+                <td class="p-2 border">{{ r.details.technical }}%</td>
+                <td class="p-2 border">{{ r.details.experience }}%</td>
+                <td class="p-2 border">{{ r.details.tools }}%</td>
+                <td class="p-2 border">{{ r.details.soft }}%</td>
+                <td class="p-2 border">
+                  {% if r.cached %}<span class="text-green-700">Cached</span>{% else %}<span class="text-blue-700">New</span>{% endif %}
+                </td>
+                <td class="p-2 border text-sm">
+                  <button onclick="toggle('d{{ loop.index }}')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs">View</button>
+                </td>
+              </tr>
+              <tr id="d{{ loop.index }}" class="hidden bg-gray-50">
+                <td colspan="8" class="p-3 border text-sm whitespace-pre-wrap">{{ r.summary }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+
+  </div>
+</main>
+
+<footer class="bg-gray-200 text-center py-3 text-sm">© 2025 Resume Analyzer AI</footer>
+
+<script>
+function toggle(id){
+  var el = document.getElementById(id);
+  if(el.classList.contains('hidden')) el.classList.remove('hidden'); else el.classList.add('hidden');
+}
+
+// Modal logic
+document.getElementById('openAddJd').addEventListener('click', function(){
+  document.getElementById('addJdModal').classList.remove('hidden');
+  document.getElementById('addJdModal').classList.add('flex');
+});
+document.getElementById('closeAddJd').addEventListener('click', function(){
+  document.getElementById('addJdModal').classList.add('hidden');
+  document.getElementById('addJdModal').classList.remove('flex');
+});
+
+// JD required client-side
+document.getElementById('analyzeForm').addEventListener('submit', function(e){
+  var jdText = document.getElementById('jd_textarea').value.trim();
+  var jdSelect = document.getElementById('jd_select').value;
+  if(!jdText && !jdSelect){
+    e.preventDefault();
+    alert('Job Description is required. Please paste the JD or select a saved JD.');
+    return false;
+  }
+  return true;
+});
+
+// -------- XLSX Export only --------
+window.serverResults = {{ results|tojson|safe }};
+
+(function(){
+  const btn = document.getElementById('exportXlsxBtn');
+  if(!btn) return;
+  const clone = btn.cloneNode(true);
+  btn.parentNode.replaceChild(clone, btn);
+
+  clone.addEventListener('click', function(){
+    const payload = Array.isArray(window.serverResults) ? window.serverResults : [];
+    if(!payload.length){
+      alert('No results to export yet. Run an analysis first.');
+      return;
+    }
+    fetch('/export_xlsx', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(j => { if (j.path) window.location = j.path; else alert('XLSX export failed'); })
+    .catch(e => { console.error(e); alert('Export error'); });
+  });
+})();
+</script>
+</body>
+</html>
