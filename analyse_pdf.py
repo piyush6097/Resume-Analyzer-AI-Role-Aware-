@@ -1,3 +1,4 @@
+# analyse_pdf.py
 import re
 import hashlib
 from sentence_transformers import SentenceTransformer
@@ -21,44 +22,26 @@ def jd_hash_func(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 def extract_tokens(text: str):
-    # normalize bullets/dashes → space; keep +/#/. for c++ c# .net
-    t = re.sub(r"[\u2022•·►–—-]+", " ", text or "")
-    t = re.sub(r"\s+", " ", t).strip().lower()
-    # map react.js/node.js to reactjs/nodejs
-    t = t.replace("react.js", "reactjs").replace("node.js", "nodejs")
-    raw = re.split(r"[^a-z0-9+#.]+", t)
-    toks = []
-    for w in raw:
-        if not w or len(w) < 1: continue
-        w = w.strip(".,()[]{}:;\"'")
-        if w in STOPWORDS: continue
-        toks.append(w)
-    return set(toks)
+    tokens = [w.lower().strip(".,()[]{}:;\"'") for w in text.split()]
+    tokens = [t for t in tokens if t and len(t) > 1 and t not in STOPWORDS]
+    return tokens
 
-def compute_presence_score(required_set, resume_tokens_set):
-    if not required_set:
-        return 0.0
-    present = len(required_set & resume_tokens_set)
-    return round((present / len(required_set)) * 100.0, 2)
+def extract_skills_from_text(text: str):
+    tokens = extract_tokens(text)
+    return set(tokens)
 
 def analyse_resume_st(resume_content: str, job_description: str, role: str = None):
     resume_text = clean_text(resume_content)
     jd_text = clean_text(job_description or "")
 
     role_key = role or "Software Developer (Generic)"
-    role_skills = get_role_skills_dict(role_key) or {"core": set(), "tools": set(), "soft": set()}
-    # Try generic fallback if empty
-    if not any(role_skills.values()):
-        generic = get_role_skills_dict("Software Developer (Generic)")
-        if any(generic.values()):
-            role_skills = generic
+    role_skills = get_role_skills_dict(role_key)
+    core_required = set([s.lower() for s in role_skills.get("core", [])])
+    tools_required = set([s.lower() for s in role_skills.get("tools", [])])
+    soft_required = set([s.lower() for s in role_skills.get("soft", [])])
 
-    core_required = set(role_skills.get("core", []))
-    tools_required = set(role_skills.get("tools", []))
-    soft_required = set(role_skills.get("soft", []))
-
-    resume_tokens = extract_tokens(resume_text)
-    jd_tokens = extract_tokens(jd_text)
+    resume_tokens = extract_skills_from_text(resume_text)
+    jd_tokens = extract_skills_from_text(jd_text)
 
     emb = model.encode([resume_text, jd_text])
     sim = 0.0
@@ -73,6 +56,12 @@ def analyse_resume_st(resume_content: str, job_description: str, role: str = Non
 
     tech_required = jd_core_overlap if jd_core_overlap else core_required
     tools_required_final = jd_tools_overlap if jd_tools_overlap else tools_required
+
+    def compute_presence_score(required_set, resume_tokens_set):
+        if not required_set:
+            return 0.0
+        present = len(required_set & resume_tokens_set)
+        return round((present / len(required_set)) * 100.0, 2)
 
     technical_score = compute_presence_score(tech_required, resume_tokens)
     tools_score = compute_presence_score(tools_required_final, resume_tokens)
