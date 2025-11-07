@@ -14,3 +14,4 @@ SQLAlchemy>=2.0.0
 pymysql
 openpyxl
 cryptography
+streamlit
