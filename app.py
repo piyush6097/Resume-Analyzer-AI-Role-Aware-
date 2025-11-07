@@ -2,6 +2,7 @@
 from flask import Flask, request, render_template, jsonify, redirect, url_for, send_file
 import os, time, json, unicodedata
 import fitz  # PyMuPDF
+import streamlit as st
 from analyse_pdf import analyse_resume_st, MODEL_VERSION
 from hash_resume import compute_sha256
 from db_mysql import (
