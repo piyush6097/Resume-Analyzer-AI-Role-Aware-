@@ -15,13 +15,9 @@
   </a>
 </header>
 
-
 <main class="flex-grow flex items-center justify-center py-8">
   <div class="bg-white p-6 rounded-xl shadow w-full max-w-5xl">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-xl font-semibold">Bulk Resume Analysis</h2>
-      <a href="/admin/skills" class="text-sm bg-gray-800 text-white px-3 py-2 rounded">Admin: Roles & Skills</a>
-    </div>
+    <h2 class="text-xl font-semibold mb-4">Bulk Resume Analysis</h2>
 
     {% if error %}
       <div class="text-red-700 bg-red-100 p-3 rounded mb-4">{{ error }}</div>
@@ -44,7 +40,7 @@
       </div>
 
       <div>
-        <label class="block mb-1">Paste Job Description (required)</label>
+        <label class="block mb-1">Paste Job Description (required) </label>
         <textarea id="jd_textarea" name="job_description" rows="4" class="w-full border p-2 rounded" placeholder="Paste the full Job Description here (required)"></textarea>
         <p class="text-sm text-gray-500 mt-1">Or select a saved JD from the dropdown below. JD is mandatory for every analysis run.</p>
       </div>
@@ -61,7 +57,9 @@
 
       <div class="flex gap-3">
         <button id="analyzeBtn" type="submit" class="bg-blue-600 text-white px-4 py-2 rounded">Analyze</button>
-        <button type="button" id="exportXlsxBtn" class="bg-purple-600 text-white px-4 py-2 rounded">Export Results (XLSX)</button>
+        <button type="button" id="exportBtn" class="bg-purple-600 text-white px-4 py-2 rounded">Export Results (XLSX)</button>
+
+        <!-- Add JD modal trigger -->
         <button type="button" id="openAddJd" class="ml-auto bg-gray-700 text-white px-3 py-2 rounded">+ Add New JD</button>
       </div>
     </form>
@@ -143,16 +141,10 @@ function toggle(id){
 }
 
 // Modal logic
-document.getElementById('openAddJd').addEventListener('click', function(){
-  document.getElementById('addJdModal').classList.remove('hidden');
-  document.getElementById('addJdModal').classList.add('flex');
-});
-document.getElementById('closeAddJd').addEventListener('click', function(){
-  document.getElementById('addJdModal').classList.add('hidden');
-  document.getElementById('addJdModal').classList.remove('flex');
-});
+document.getElementById('openAddJd').addEventListener('click', function(){ document.getElementById('addJdModal').classList.remove('hidden'); document.getElementById('addJdModal').classList.add('flex'); });
+document.getElementById('closeAddJd').addEventListener('click', function(){ document.getElementById('addJdModal').classList.add('hidden'); document.getElementById('addJdModal').classList.remove('flex'); });
 
-// JD required client-side
+// Make JD required on client side: if no JD pasted AND no JD selected -> block submit
 document.getElementById('analyzeForm').addEventListener('submit', function(e){
   var jdText = document.getElementById('jd_textarea').value.trim();
   var jdSelect = document.getElementById('jd_select').value;
@@ -164,31 +156,54 @@ document.getElementById('analyzeForm').addEventListener('submit', function(e){
   return true;
 });
 
-// -------- XLSX Export only --------
-window.serverResults = {{ results|tojson|safe }};
+// Export button - gather results from page into JSON and POST to /export_results
+document.getElementById('exportBtn').addEventListener('click', function(){
+  const rows = document.querySelectorAll('table tbody tr');
+  const payload = [];
+  for(let i=0; i<rows.length; i+=2){
+    const main = rows[i];
+    const cols = main.querySelectorAll('td');
+    if(!cols || cols.length < 8) continue;
+    const filename = cols[0].innerText.trim();
+    const overall = cols[1].innerText.trim().replace('%','');
+    const technical = cols[2].innerText.trim().replace('%','');
+    const experience = cols[3].innerText.trim().replace('%','');
+    const tools = cols[4].innerText.trim().replace('%','');
+    const soft = cols[5].innerText.trim().replace('%','');
+    const status = cols[6].innerText.trim();
+    const detailRow = rows[i+1];
+    const summary = detailRow ? detailRow.innerText.trim() : '';
+    payload.push({
+      filename, overall, technical, experience, tools, soft, status, summary
+    });
+  }
 
-(function(){
-  const btn = document.getElementById('exportXlsxBtn');
-  if(!btn) return;
-  const clone = btn.cloneNode(true);
-  btn.parentNode.replaceChild(clone, btn);
-
-  clone.addEventListener('click', function(){
-    const payload = Array.isArray(window.serverResults) ? window.serverResults : [];
-    if(!payload.length){
-      alert('No results to export yet. Run an analysis first.');
-      return;
+  fetch('/export_results', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(r => {
+    if(r.ok){
+      return r.blob();
+    } else {
+      return r.json().then(j=>{throw j;});
     }
-    fetch('/export_xlsx', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload)
-    })
-    .then(r => r.json())
-    .then(j => { if (j.path) window.location = j.path; else alert('XLSX export failed'); })
-    .catch(e => { console.error(e); alert('Export error'); });
+  })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'results.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  })
+  .catch(e => {
+    console.error(e);
+    alert('Export error');
   });
-})();
+});
 </script>
 </body>
 </html>
