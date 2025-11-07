@@ -1,8 +1,8 @@
 # app.py
 from flask import Flask, request, render_template, jsonify, redirect, url_for, send_file
-import os, time, json, unicodedata
+import os, time, json, unicodedata, traceback
 import fitz  # PyMuPDF
-import streamlit as st
+import streamlit as st  # kept because analyse_resume_st may use it
 from analyse_pdf import analyse_resume_st, MODEL_VERSION
 from hash_resume import compute_sha256
 from db_mysql import (
@@ -21,8 +21,13 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, "uploads")
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Initialize DB (creates tables if missing)
-init_db()
+# Initialize DB (creates tables if missing) — wrapped so app still runs when DB unavailable
+try:
+    init_db()
+    print("[app] DB initialized successfully.")
+except Exception as e:
+    print("[app] Database initialization failed. Continuing in limited mode.")
+    traceback.print_exc()
 
 @app.route("/health")
 def health():
@@ -41,8 +46,20 @@ def extract_text_from_resume(pdf_path):
 @app.route("/", methods=["GET", "POST"])
 def index():
     results = []
-    jds = list_job_descriptions()
-    roles = list_roles()
+    try:
+        jds = list_job_descriptions()
+    except Exception:
+        # if DB unavailable, return empty lists
+        print("[app] Warning: list_job_descriptions() failed (DB may be down).")
+        traceback.print_exc()
+        jds = []
+
+    try:
+        roles = list_roles()
+    except Exception:
+        print("[app] Warning: list_roles() failed (DB may be down).")
+        traceback.print_exc()
+        roles = []
 
     if request.method == "POST":
         resumes = request.files.getlist("resumes")
@@ -55,9 +72,9 @@ def index():
                                    error="Job Description is required.")
 
         if selected_jd_id and not job_description:
-            jd_row = get_job_description(int(selected_jd_id))
+            jd_row = get_job_description(int(selected_jd_id)) if selected_jd_id else None
             jd_text = jd_row[2] if jd_row else ""
-            jd_id_int = int(selected_jd_id)
+            jd_id_int = int(selected_jd_id) if selected_jd_id else None
         else:
             jd_text = job_description
             jd_id_int = None
@@ -83,22 +100,32 @@ def index():
             analysis = analyse_resume_st(resume_content, jd_text, role or None)
             jd_hash = analysis.get("jd_hash", "")
 
-            cached_score = get_cached_score(
-                resume_hash, jd_hash, role or "", MODEL_VERSION
-            )
+            try:
+                cached_score = get_cached_score(
+                    resume_hash, jd_hash, role or "", MODEL_VERSION
+                )
+            except Exception:
+                print("[app] Warning: get_cached_score failed (DB may be down).")
+                traceback.print_exc()
+                cached_score = None
 
             if cached_score is not None:
                 # Use cached value
                 analysis["overall"] = cached_score
                 analysis["cached"] = True
             else:
-                save_score(
-                    resume_hash, jd_hash, role or "",
-                    analysis.get("overall", 0),
-                    model_version=MODEL_VERSION,
-                    jd_id=jd_id_int, source_filename=filename
-                )
-                analysis["cached"] = False
+                try:
+                    save_score(
+                        resume_hash, jd_hash, role or "",
+                        analysis.get("overall", 0),
+                        model_version=MODEL_VERSION,
+                        jd_id=jd_id_int, source_filename=filename
+                    )
+                    analysis["cached"] = False
+                except Exception:
+                    print("[app] Warning: save_score failed (DB may be down).")
+                    traceback.print_exc()
+                    analysis["cached"] = False
 
             results.append({
                 "filename": filename,
@@ -190,23 +217,41 @@ def admin_add_jd():
     desc = request.form.get("description")
     if not name or not desc:
         return "Name and description required", 400
-    add_job_description(name, desc)
+    try:
+        add_job_description(name, desc)
+    except Exception:
+        print("[app] Warning: add_job_description failed (DB may be down).")
+        traceback.print_exc()
     return redirect(url_for("index"))
 
 @app.route("/admin/jd/list", methods=["GET"])
 def admin_list_jd():
-    return jsonify(list_job_descriptions())
+    try:
+        return jsonify(list_job_descriptions())
+    except Exception:
+        print("[app] Warning: list_job_descriptions failed (DB may be down).")
+        traceback.print_exc()
+        return jsonify([])
 
 @app.route("/admin/candidates", methods=["GET"])
 def admin_list_candidates():
-    return jsonify(list_cached_candidates())
+    try:
+        return jsonify(list_cached_candidates())
+    except Exception:
+        print("[app] Warning: list_cached_candidates failed (DB may be down).")
+        traceback.print_exc()
+        return jsonify([])
 
 @app.route("/admin/candidate/delete", methods=["POST"])
 def admin_delete_candidate():
     resume_hash = request.form.get("resume_hash")
     jd_hash = request.form.get("jd_hash")
     role = request.form.get("role")
-    delete_cached(resume_hash, jd_hash, role)
+    try:
+        delete_cached(resume_hash, jd_hash, role)
+    except Exception:
+        print("[app] Warning: delete_cached failed (DB may be down).")
+        traceback.print_exc()
     return "deleted", 200
 
 if __name__ == "__main__":
